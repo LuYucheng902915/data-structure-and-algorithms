@@ -1,0 +1,110 @@
+{
+  /*
+   * VS Code Tasks 的核心用途，是把项目中固定、常用的命令行操作封装成项目任务。
+   * 原本需要在命令行中输入项目的构建、测试、部署等命令，现在可以直接在 VS Code 里通过快捷键或在命令面板 Tasks: Run Task 中点击对应任务来执行相应命令。
+   * 因此 tasks.json 的本质可以理解为项目级的命令快捷入口。
+   * 通常项目会先把复杂流程封装成脚本，例如构建、测试和部署脚本，VS Code Tasks 进一步给脚本提供一个编辑器内的快捷键入口。
+   *
+   * 这个 tasks.json 主要用于规避在 VS Code 中保存 .ipynb 文件时的一个问题。
+   *
+   * 当前项目中的算法笔记主要使用 .ipynb 格式编写，并且通常把第一个 cell 设为 Markdown，用来记录题目标题、题目链接等说明信息。
+   *
+   * 已观察到的问题是：
+   *
+   * VS Code 保存 .ipynb 文件时，notebook.formatOnSave.enabled 配置可以正常工作。
+   * 但 notebook.codeActionsOnSave 配置在 .ipynb 文件第一个 cell 是 Markdown 时无法正常工作。
+   * 如果 .ipynb 文件第一个 cell 是 Python code cell，notebook.codeActionsOnSave 配置可以正常工作。
+   *
+   * 为了绕开这个问题，这里不依赖 VS Code 的 notebook.codeActionsOnSave，而是直接通过命令行对当前文件执行：
+   *
+   *   uv run ruff check --fix <current-file>
+   *
+   * 项目中的 pyproject.toml 已经配置了：
+   *
+   *   [tool.ruff]
+   *   fix = true
+   *
+   *   [tool.ruff.lint]
+   *   select = ["E", "F", "UP", "B", "SIM", "I"]
+   *
+   * 因此执行 uv run ruff check <current-file> 会自动应用安全修复。
+   * 启用 I（isort）规则后，还会自动修复 import 顺序问题，在本项目中可以覆盖 source.organizeImports 代码动作失效带来的影响。
+   * 这里仍显式写 `--fix`，主要是为了让这个 task 的意图更清楚。
+   *
+   * 解决这个问题大致有两种路线：
+   *
+   * 1. 使用 Run on Save 这一类 VS Code 插件。
+   *    这类插件可以在文件保存后自动执行自定义命令或脚本，例如保存 .ipynb 后自动执行 uv run ruff check --fix <current-file> 命令。
+   *    优点是最接近理想体验：按 Ctrl + S 保存后自动应用安全修复。
+   *    缺点是需要额外安装插件，引入一套额外的保存后执行机制。
+   *
+   * 2. 使用 VS Code 原生 Tasks 机制。
+   *    Tasks 可以把外部命令注册成项目任务，并且可以把某个任务设为默认 build task。
+   *    这样就可以使用 VS Code 默认快捷键 Ctrl + Shift + B 来运行当前项目的默认 build task。
+   *    优点是不需要额外插件，也不需要修改全局 keybindings.json 来绑定新的快捷键。
+   *    缺点是它不会在 Ctrl + S 保存时自动运行，而是需要额外按一次 Ctrl + Shift + B。
+   *    注意：VS Code 默认会在运行 task 前保存未保存的编辑器内容（task.saveBeforeRun = "always"）。
+   *    因此可以直接按 Ctrl + Shift + B 运行默认 build task，不需要先按 Ctrl + S，比较方便。
+
+   * 当前项目选择第二种方案。
+   */
+  
+  // VS Code Tasks 配置文件格式版本，不是项目版本；目前通常固定写为 2.0.0。
+  "version": "2.0.0",
+
+  "tasks": [
+    {
+      // 任务名称，会显示在命令面板的 Tasks: Run Task 列表中。
+      "label": "ruff: fix current file",
+
+      // 自定义 task 常用的 type 主要有 shell 和 process 两种。
+      // shell 表示 VS Code 先启动系统 shell，然后把 command 这段命令字符串传给 shell，由 shell 来解析并启动对应程序。
+      // 使用 shell 时，shell 会把输入的命令字符串解析成要启动的程序和参数列表，再启动该程序，并把参数列表作为该进程启动时收到的 argv 传入。
+      // argv 是 argument vector 的缩写，表示进程启动时收到的参数列表。通常 argv[0] 是程序名或程序路径，argv[1:] 是传给程序的具体参数。在 Unix/C 传统里，argv 是对这组参数的经典叫法。
+      // process 表示 VS Code 直接启动 command 指定的程序，并将 args 数组中的每个元素作为一个独立参数传给该程序。
+      // command 可以是绝对路径，如果 command 没有指定绝对路径，VS Code 会在系统 PATH 环境变量中查找对应的可执行文件。
+      // 使用 process 时，tasks.json 已经用 command + args 直接结构化表达了这件事：command 对应要启动的程序，args 对应传给程序的参数列表。很多现代工具和配置文件也用 args 表达传给程序的参数列表。
+      // 因此二者最终都会落到启动一个进程，并给它传入参数列表这个模型上；区别在于 shell 写法中间多了一层命令字符串解析，而 process 写法直接给出 command 和 args。
+      // 当前任务只是执行 uv run ruff check --fix <current-file>，命令和参数都很明确，因此可以直接启动 uv 进程执行。
+      "type": "process",
+
+      // 直接启动 uv 进程。
+      "command": "uv",
+      
+      // 传给命令的参数（arguments）列表。
+      // 等价于执行 uv run ruff check --fix -- <current-file> 命令。
+      // --：命令行工具中常见的选项解析结束约定，其后面的内容不再按命令行选项解析，而是直接作为普通位置参数传递给命令行工具。
+      // ${file}：VS Code 变量，表示当前编辑器中的文件的路径。
+      // VS Code 会先执行变量替换，把 ${file} 替换成当前编辑器中的文件的路径，然后再执行命令。
+      "args": ["run", "ruff", "check", "--fix", "--", "${file}"],
+
+      "options": {
+        // cwd 是 current working directory，当前工作目录，是进程的一个运行属性。
+        // 启动一个进程时，父进程会给子进程准备一些上下文，包括参数列表、当前工作目录、环境变量、标准输入/输出/错误连接到哪里等。
+        // 进程启动后，会根据 cwd 来确定当前工作目录，例如解析相对路径时会以 cwd 作为基准路径。
+        // ${workspaceFolder}：VS Code 变量，表示当前打开的工作区的根目录路径。
+        // uv 进程的当前工作目录为项目根目录，uv 能以项目根目录为基准发现并读取 pyproject.toml、uv.lock 和 .venv 等项目文件。
+        "cwd": "${workspaceFolder}"
+      },
+
+      // 不让 VS Code 使用 problem matcher 额外解析终端输出。
+      // Ruff 扩展本身已经会在编辑器中显示诊断信息。
+      "problemMatcher": [],
+
+      "group": {
+        // 将这个任务设置为当前工作区的默认 build task，这样就可以直接按 Ctrl + Shift + B 来运行这个任务。
+        "kind": "build",
+        "isDefault": true
+      },
+
+      "presentation": {
+        // 每次运行任务时显示在终端面板，方便查看命令输出。
+        "reveal": "always",
+        // 复用这个任务自己的专用终端，多次运行任务时不会不断创建新的终端标签。
+        "panel": "dedicated",
+        // 每次运行前清空旧输出，避免和上一次任务输出混在一起。
+        "clear": true
+      }
+    }
+  ]
+}

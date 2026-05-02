@@ -1,0 +1,20 @@
+[project]
+name = "data-structure-and-algorithms"
+version = "0.1.0"
+description = "Add your description here"
+authors = [{ name = "Lu Yucheng", email = "24126655@bjtu.edu.cn" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["ipykernel>=7.2.0", "ruff>=0.15.5"]
+
+[tool.ruff]
+line-length = 100
+fix = true
+cache-dir = ".cache/ruff"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "SIM", "I"]
+ignore = ["E501"]
